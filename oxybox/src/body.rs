@@ -1,181 +1,524 @@
-use std::hash::Hash;
+use glam::{Vec2, vec2};
+use oxybox_sys::{self as sys};
+use std::os::raw::c_void;
 
-use crate::World;
-use glam::Vec2;
-use oxybox_sys::*;
+use crate::{World, WorldId};
+
+#[derive(Debug, Copy, Clone)]
+pub struct Body {
+    body_id: BodyId,
+    shape_id: ShapeId,
+}
+
+impl Body {
+    pub fn new(body_id: BodyId, shape_id: ShapeId) -> Self {
+        Self { body_id, shape_id }
+    }
+
+    pub fn position(&self) -> Vec2 {
+        unsafe { sys::b2Body_GetPosition(*self.body_id).into() }
+    }
+
+    pub fn body_id(&self) -> BodyId {
+        self.body_id
+    }
+
+    pub fn shape_id(&self) -> ShapeId {
+        self.shape_id
+    }
+
+    pub fn kind(&self) -> BodyKind {
+        match unsafe { sys::b2Body_GetType(*self.body_id) } {
+            #[allow(non_upper_case_globals)]
+            sys::b2BodyType_b2_dynamicBody => BodyKind::Dynamic,
+            #[allow(non_upper_case_globals)]
+            sys::b2BodyType_b2_kinematicBody => BodyKind::Kinematic,
+            #[allow(non_upper_case_globals)]
+            sys::b2BodyType_b2_staticBody => BodyKind::Static,
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn set_user_data(&self, data: u64) {
+        unsafe {
+            sys::b2Body_SetUserData(*self.body_id, data as usize as *mut c_void);
+        }
+    }
+
+    pub fn user_data(&self) -> Option<u64> {
+        unsafe {
+            let ptr = sys::b2Body_GetUserData(*self.body_id);
+            if ptr.is_null() { None } else { Some(ptr as usize as u64) }
+        }
+    }
+
+    /// Returns if this body is dynamic.
+    ///
+    /// Keep in mind this is _not_ the same thing as being static as it could also be kinematic. Use
+    /// [Body::is_static] instead.
+    pub fn is_dynamic(&self) -> bool {
+        self.kind() == BodyKind::Dynamic
+    }
+
+    pub fn is_static(&self) -> bool {
+        self.kind() == BodyKind::Static
+    }
+
+    pub fn is_kinematic(&self) -> bool {
+        self.kind() == BodyKind::Kinematic
+    }
+
+    pub fn body_shape(&self) -> BodyShape {
+        let shape = unsafe { sys::b2Shape_GetType(*self.shape_id()) };
+        match shape {
+            #[allow(non_upper_case_globals)]
+            sys::b2ShapeType_b2_circleShape => BodyShape::Circle,
+            #[allow(non_upper_case_globals)]
+            sys::b2ShapeType_b2_polygonShape => BodyShape::Rectangle,
+            s => unimplemented!("{s:?}"),
+        }
+    }
+
+    pub fn dimensions(&self) -> Vec2 {
+        vec2(self.width(), self.height())
+    }
+
+    pub fn width(&self) -> f32 {
+        unsafe {
+            match self.body_shape() {
+                BodyShape::Circle => sys::b2Shape_GetCircle(*self.shape_id).radius * 2.0,
+                BodyShape::Rectangle => {
+                    let polygon = sys::b2Shape_GetPolygon(*self.shape_id);
+                    let mut min_x = f32::INFINITY;
+                    let mut max_x = f32::NEG_INFINITY;
+                    for i in 0..polygon.count as usize {
+                        let x = polygon.vertices[i].x;
+                        min_x = min_x.min(x);
+                        max_x = max_x.max(x);
+                    }
+                    max_x - min_x
+                }
+            }
+        }
+    }
+
+    pub fn height(&self) -> f32 {
+        unsafe {
+            match self.body_shape() {
+                BodyShape::Circle => sys::b2Shape_GetCircle(*self.shape_id).radius * 2.0,
+                BodyShape::Rectangle => {
+                    let polygon = sys::b2Shape_GetPolygon(*self.shape_id);
+                    let mut min_y = f32::INFINITY;
+                    let mut max_y = f32::NEG_INFINITY;
+                    for i in 0..polygon.count as usize {
+                        let y = polygon.vertices[i].y;
+                        min_y = min_y.min(y);
+                        max_y = max_y.max(y);
+                    }
+                    max_y - min_y
+                }
+            }
+        }
+    }
+
+    pub fn rotation(&self) -> f32 {
+        let r = unsafe { sys::b2Body_GetRotation(*self.body_id) };
+        r.s.atan2(r.c)
+    }
+
+    pub fn linear_velocity(&self) -> Vec2 {
+        unsafe { sys::b2Body_GetLinearVelocity(*self.body_id).into() }
+    }
+
+    pub fn set_linear_velocity(&self, linear_velocity: Vec2) {
+        unsafe {
+            sys::b2Body_SetLinearVelocity(*self.body_id, linear_velocity.into());
+        }
+    }
+
+    pub fn set_rotation(&self, rotation: f32) {
+        unsafe {
+            sys::b2Body_SetTransform(
+                *self.body_id,
+                self.position().into(),
+                sys::b2Rot {
+                    c: rotation.cos(),
+                    s: rotation.sin(),
+                },
+            );
+        }
+    }
+
+    pub fn get_rotation(&self) -> f32 {
+        unsafe {
+            let sys::b2Rot { c, s } = sys::b2Body_GetRotation(*self.body_id);
+            s.atan2(c)
+        }
+    }
+
+    pub fn set_position(&self, position: Vec2) {
+        unsafe {
+            sys::b2Body_SetTransform(*self.body_id, position.into(), sys::b2Body_GetRotation(*self.body_id));
+        }
+    }
+
+    pub fn apply_impulse(&self, impulse: Vec2) {
+        unsafe { sys::b2Body_ApplyLinearImpulseToCenter(*self.body_id, impulse.into(), true) }
+    }
+
+    pub fn apply_impulse_at(&self, impulse: Vec2, local_position: Vec2) {
+        unsafe { sys::b2Body_ApplyLinearImpulse(*self.body_id, impulse.into(), local_position.into(), true) }
+    }
+
+    pub fn apply_angular_impulse(&self, impulse: f32) {
+        unsafe { sys::b2Body_ApplyAngularImpulse(*self.body_id, impulse, true) }
+    }
+
+    pub fn mass(&self) -> f32 {
+        unsafe { sys::b2Body_GetMass(*self.body_id) }
+    }
+
+    pub fn contact_begin_bodies<'w>(&self, world: &'w World) -> impl Iterator<Item = Body> + 'w {
+        assert!(
+            unsafe { sys::b2Shape_AreContactEventsEnabled(*self.shape_id) },
+            "You must enable contact events to read contact events!"
+        );
+
+        let shape = self.shape_id;
+
+        unsafe {
+            world.contact_events().filter_map(move |(a, b)| {
+                if a == shape {
+                    Some(world.body(BodyId(sys::b2Shape_GetBody(*b))))
+                } else if b == shape {
+                    Some(world.body(BodyId(sys::b2Shape_GetBody(*a))))
+                } else {
+                    None
+                }
+            })
+        }
+    }
+
+    pub fn contact_begin(&self, other: Body, world: &World) -> bool {
+        self.contact_begin_bodies(world).any(|v| v.body_id == other.body_id)
+    }
+}
 
 pub struct BodyBuilder {
-    body: b2BodyDef,
-    shape: b2ShapeDef,
-    held_shape_data: HeldShapeData,
+    held_shape: HeldShape,
+    kind: Option<BodyKind>,
+    position: Option<Vec2>,
+    rotation: Option<f32>,
+    linear_velocity: Option<Vec2>,
+    angular_velocity: Option<f32>,
+    linear_damping: Option<f32>,
+    angular_damping: Option<f32>,
+    user_data: Option<u64>,
+    is_bullet: Option<bool>,
+    density: Option<f32>,
+    category: Option<u64>,
+    mask: Option<u64>,
+    is_sensor: Option<bool>,
+    enable_contact_events: Option<bool>,
+    restitution: Option<f32>,
+    friction: Option<f32>,
 }
 
-pub enum BodyKind {
-    Dynamic,
-    Kinematic,
-    Static,
-}
-
-pub enum Shape {
-    Circle(f32),
-    Box(Vec2),
-}
-
-enum HeldShapeData {
-    Circle(b2Circle),
-    Rectangle(b2Polygon),
-}
-
-// let body_id = b2CreateBody(world.raw(), &body_def);
 impl BodyBuilder {
     pub fn circle(radius: f32) -> Self {
-        unsafe {
-            Self {
-                body: b2DefaultBodyDef(),
-                shape: b2DefaultShapeDef(),
-                held_shape_data: HeldShapeData::Circle(b2Circle {
-                    center: Vec2::ZERO.into(),
-                    radius,
-                }),
-            }
+        Self {
+            held_shape: HeldShape::Circle(sys::b2Circle {
+                center: Vec2::ZERO.into(),
+                radius,
+            }),
+            ..Default::default()
         }
     }
 
     pub fn rectangle(dimensions: Vec2) -> Self {
         unsafe {
             Self {
-                body: b2DefaultBodyDef(),
-                shape: b2DefaultShapeDef(),
-                held_shape_data: HeldShapeData::Rectangle(b2MakeBox(dimensions.x / 2.0, dimensions.y / 2.0)),
+                held_shape: HeldShape::Rectangle(sys::b2MakeBox(dimensions.x / 2.0, dimensions.y / 2.0)),
+                ..Default::default()
             }
         }
     }
 
     pub fn kind(mut self, kind: BodyKind) -> Self {
-        self.body.type_ = match kind {
-            BodyKind::Dynamic => b2BodyType_b2_dynamicBody,
-            BodyKind::Kinematic => b2BodyType_b2_kinematicBody,
-            BodyKind::Static => b2BodyType_b2_staticBody,
-        };
+        self.kind = Some(kind);
         self
     }
 
     pub fn position(mut self, position: Vec2) -> Self {
-        self.body.position = position.into();
+        self.position = Some(position);
+        self
+    }
+
+    pub fn rotation(mut self, rotation: f32) -> Self {
+        self.rotation = Some(rotation);
+        self
+    }
+
+    pub fn linear_damping(mut self, damping: f32) -> Self {
+        self.linear_damping = Some(damping);
         self
     }
 
     pub fn friction(mut self, friction: f32) -> Self {
-        self.shape.material.friction = friction;
+        self.friction = Some(friction);
         self
     }
 
     pub fn density(mut self, density: f32) -> Self {
-        self.shape.density = density;
+        self.density = Some(density);
         self
     }
 
     pub fn angular_damping(mut self, damping: f32) -> Self {
-        self.body.angularDamping = damping;
+        self.angular_damping = Some(damping);
         self
     }
 
     pub fn restitution(mut self, restitution: f32) -> Self {
-        self.shape.material.restitution = restitution;
+        self.restitution = Some(restitution);
         self
     }
 
     pub fn linear_velocity(mut self, velocity: Vec2) -> Self {
-        self.body.linearVelocity = velocity.into();
+        self.linear_velocity = Some(velocity);
         self
     }
 
     pub fn angular_velocity(mut self, velocity: f32) -> Self {
-        self.body.angularVelocity = velocity;
+        self.angular_velocity = Some(velocity);
         self
     }
 
     pub fn bullet(mut self) -> Self {
-        assert!(!self.shape.isSensor, "A body cannot be both a bullet and a sensor!");
-        self.body.isBullet = true;
+        assert_ne!(
+            self.is_sensor,
+            Some(true),
+            "A body cannot be both a bullet and a sensor!"
+        );
+        self.is_bullet = Some(true);
         self
     }
 
-    // pub fn collision_groups(mut self, groups: InteractionGroups) -> Self {
-    //     self.collider.set_collision_groups(groups);
-    //     self
-    // }
+    pub fn category(mut self, category: u64) -> Self {
+        self.category = Some(category);
+        self
+    }
+
+    pub fn mask(mut self, mask: u64) -> Self {
+        self.mask = Some(mask);
+        self
+    }
+
+    pub fn user_data(mut self, data: u64) -> Self {
+        self.user_data = Some(data);
+        self
+    }
 
     pub fn sensor(mut self) -> Self {
-        assert!(!self.body.isBullet, "A body cannot be both a bullet and a sensor!");
-        self.shape.isSensor = true;
+        assert_ne!(
+            self.is_bullet,
+            Some(true),
+            "A body cannot be both a bullet and a sensor!"
+        );
+        self.is_sensor = Some(true);
         self
     }
 
-    // todo: this gives the appearance of being optional right now but in reality if you don't use it
-    // everything will explode
-    // pub fn entity(mut self, entity: Entity) -> Self {
-    //     self.collider.user_data = entity.to_bits().get() as u128;
-    //     self
-    // }
+    pub fn enable_contact_events(mut self) -> Self {
+        self.enable_contact_events = Some(true);
+        self
+    }
 
-    pub fn build(self, world: &mut World) -> BodyId {
+    pub fn build(self, world: WorldId) -> Body {
         unsafe {
-            let body_id = b2CreateBody(world.raw(), &self.body);
-            let shape_id = match self.held_shape_data {
-                HeldShapeData::Circle(b2_circle) => b2CreateCircleShape(body_id, &self.shape, &b2_circle),
-                HeldShapeData::Rectangle(b2_polygon) => b2CreatePolygonShape(body_id, &self.shape, &b2_polygon),
+            let mut body = sys::b2DefaultBodyDef();
+            let mut shape = sys::b2DefaultShapeDef();
+
+            if let Some(kind) = self.kind {
+                body.type_ = match kind {
+                    BodyKind::Dynamic => sys::b2BodyType_b2_dynamicBody,
+                    BodyKind::Kinematic => sys::b2BodyType_b2_kinematicBody,
+                    BodyKind::Static => sys::b2BodyType_b2_staticBody,
+                };
+            }
+
+            if let Some(position) = self.position {
+                body.position = position.into();
+            }
+            if let Some(angular_damping) = self.angular_damping {
+                body.angularDamping = angular_damping;
+            }
+            if let Some(linear_damping) = self.linear_damping {
+                body.linearDamping = linear_damping;
+            }
+            if let Some(rotation) = self.rotation {
+                body.rotation = sys::b2Rot {
+                    c: rotation.cos(),
+                    s: rotation.sin(),
+                };
+            }
+            if let Some(friction) = self.friction {
+                shape.material.friction = friction;
+            }
+            if let Some(linear_velocity) = self.linear_velocity {
+                body.linearVelocity = linear_velocity.into();
+            }
+            if let Some(angular_velocity) = self.angular_velocity {
+                body.angularVelocity = angular_velocity;
+            }
+            if let Some(is_bullet) = self.is_bullet {
+                body.isBullet = is_bullet;
+            }
+            if let Some(user_data) = self.user_data {
+                body.userData = user_data as usize as *mut c_void;
+                shape.userData = user_data as usize as *mut c_void;
+            }
+            if let Some(density) = self.density {
+                shape.density = density;
+            }
+            if let Some(restitution) = self.restitution {
+                shape.material.restitution = restitution;
+            }
+            if let Some(category) = self.category {
+                shape.filter.categoryBits = category;
+            }
+            if let Some(mask) = self.mask {
+                shape.filter.maskBits = mask;
+            }
+            if let Some(is_sensor) = self.is_sensor {
+                shape.isSensor = is_sensor;
+            }
+            if let Some(enable_contact_events) = self.enable_contact_events {
+                shape.enableContactEvents = enable_contact_events;
+            }
+
+            let body_id = sys::b2CreateBody(*world, &body);
+            let shape_id = match self.held_shape {
+                HeldShape::Circle(b2_circle) => sys::b2CreateCircleShape(body_id, &shape, &b2_circle),
+                HeldShape::Rectangle(b2_polygon) => sys::b2CreatePolygonShape(body_id, &shape, &b2_polygon),
             };
 
-            let body_id = BodyId(body_id);
-            let body = Body { body_id, shape_id };
-            world.bodies.insert(body_id, body);
-
-            body_id
+            Body {
+                body_id: BodyId(body_id),
+                shape_id: ShapeId(shape_id),
+            }
         }
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct BodyId(b2BodyId);
+impl Default for BodyBuilder {
+    fn default() -> Self {
+        Self {
+            held_shape: HeldShape::Circle(sys::b2Circle {
+                center: Vec2::ZERO.into(),
+                radius: 0.0,
+            }),
+            kind: None,
+            position: None,
+            rotation: None,
+            linear_velocity: None,
+            angular_velocity: None,
+            linear_damping: None,
+            angular_damping: None,
+            user_data: None,
+            is_bullet: None,
+            density: None,
+            category: None,
+            mask: None,
+            is_sensor: None,
+            enable_contact_events: None,
+            restitution: None,
+            friction: None,
+        }
+    }
+}
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum BodyKind {
+    Dynamic,
+    Kinematic,
+    Static,
+}
+
+enum HeldShape {
+    Circle(sys::b2Circle),
+    Rectangle(sys::b2Polygon),
+}
+
+#[derive(Copy, Clone)]
+pub struct BodyId(sys::b2BodyId);
 impl PartialEq for BodyId {
     fn eq(&self, other: &Self) -> bool {
-        self.0.generation == other.0.generation && self.0.index1 == other.0.index1 && self.0.world0 == other.0.world0
+        let a = self.0;
+        let b = other.0;
+        a.generation == b.generation && a.index1 == b.index1 && a.world0 == b.world0
     }
 }
-
 impl Eq for BodyId {}
 
-impl Hash for BodyId {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let bits: u64 = unsafe { std::mem::transmute(self.0) };
-        bits.hash(state);
+impl std::fmt::Debug for BodyId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(&format!("{}@{}v{}", self.0.index1, self.0.world0, self.0.generation))
     }
 }
 
+impl std::hash::Hash for BodyId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let a = self.0;
+        a.world0.hash(state);
+        a.index1.hash(state);
+        a.generation.hash(state);
+    }
+}
 impl std::ops::Deref for BodyId {
-    type Target = b2BodyId;
+    type Target = sys::b2BodyId;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub struct Body {
-    body_id: BodyId,
-    shape_id: b2ShapeId,
+#[derive(Debug, Copy, Clone)]
+pub struct ShapeId(sys::b2ShapeId);
+impl PartialEq for ShapeId {
+    fn eq(&self, other: &Self) -> bool {
+        let a = self.0;
+        let b = other.0;
+        a.generation == b.generation && a.index1 == b.index1 && a.world0 == b.world0
+    }
+}
+impl Eq for ShapeId {}
+
+impl std::hash::Hash for ShapeId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let a = self.0;
+        a.world0.hash(state);
+        a.index1.hash(state);
+        a.generation.hash(state);
+    }
+}
+impl std::ops::Deref for ShapeId {
+    type Target = sys::b2ShapeId;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-impl Body {
-    pub fn position(&self) -> Vec2 {
-        unsafe { b2Body_GetPosition(*self.body_id).into() }
+impl From<sys::b2ShapeId> for ShapeId {
+    fn from(value: sys::b2ShapeId) -> Self {
+        Self(value)
     }
 }
 
 pub enum BodyShape {
     Circle,
-    Box,
+    Rectangle,
 }
 
 // No Drop: bodies are cleaned up when the World is destroyed.

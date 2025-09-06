@@ -8,18 +8,18 @@ fn falling_ball() {
 
     let _ground = BodyBuilder::rectangle(vec2(100.0, 20.0))
         .position(vec2(0.0, -10.0))
-        .build(&mut world);
+        .build(world.id());
 
     let ball = BodyBuilder::circle(5.0)
         .kind(BodyKind::Dynamic)
         .position(vec2(0.0, 20.0))
         .restitution(0.0)
-        .build(&mut world);
+        .build(world.id());
 
     for _ in 0..120 {
-        world.tick();
+        world.step();
     }
 
-    let position = world.read(ball).unwrap().position();
+    let position = ball.position();
     assert!((5.0 - position.y) < 1e-3, "ball at wrong position: {position:?}");
 }
