@@ -8,11 +8,16 @@ use crate::{World, WorldId};
 pub struct Body {
     body_id: BodyId,
     shape_id: ShapeId,
+    world_id: WorldId,
 }
 
 impl Body {
-    pub fn new(body_id: BodyId, shape_id: ShapeId) -> Self {
-        Self { body_id, shape_id }
+    pub fn new(body_id: BodyId, shape_id: ShapeId, world_id: WorldId) -> Self {
+        Self {
+            body_id,
+            shape_id,
+            world_id,
+        }
     }
 
     pub fn position(&self) -> Vec2 {
@@ -184,14 +189,14 @@ impl Body {
             "You must enable contact events to read contact events!"
         );
 
-        let shape = self.shape_id;
+        let body = self.body_id;
 
         unsafe {
             world.contact_events().filter_map(move |(a, b)| {
-                if a == shape {
-                    Some(world.body(BodyId(sys::b2Shape_GetBody(*b))))
-                } else if b == shape {
-                    Some(world.body(BodyId(sys::b2Shape_GetBody(*a))))
+                if a == body {
+                    Some(world.body(b))
+                } else if b == body {
+                    Some(world.body(a))
                 } else {
                     None
                 }
@@ -406,6 +411,7 @@ impl BodyBuilder {
             Body {
                 body_id: BodyId(body_id),
                 shape_id: ShapeId(shape_id),
+                world_id: world,
             }
         }
     }
@@ -480,6 +486,12 @@ impl std::ops::Deref for BodyId {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl From<sys::b2BodyId> for BodyId {
+    fn from(value: sys::b2BodyId) -> Self {
+        Self(value)
     }
 }
 

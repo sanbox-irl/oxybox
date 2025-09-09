@@ -5,7 +5,15 @@ edition = "2021"
 
 [dependencies]
 glam = { workspace = true }
+bitflags = "2.9.3"
+smol-rgb = { path = "../../smol-rgb", features = [
+    "std",
+    "serde",
+    "bytemuck",
+    "rand",
+] }
 oxybox-sys = { path = "../oxybox-sys" }
+
 
 [lib]
 
