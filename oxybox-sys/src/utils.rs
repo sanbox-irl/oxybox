@@ -13,6 +13,3 @@ impl From<b2Vec2> for Vec2 {
         Vec2::new(value.x, value.y)
     }
 }
-
-
-

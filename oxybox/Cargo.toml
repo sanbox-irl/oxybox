@@ -13,6 +13,7 @@ smol-rgb = { path = "../../smol-rgb", features = [
     "rand",
 ] }
 oxybox-sys = { path = "../oxybox-sys" }
+lyon = { version = "1", features = ["extra"] }
 
 
 [lib]
