@@ -1,7 +1,7 @@
 mod body;
-mod tesselate;
+mod render;
 mod world;
 
 pub use body::*;
-pub use tesselate::*;
+pub use render::*;
 pub use world::*;

@@ -154,13 +154,6 @@ impl Body {
         }
     }
 
-    pub fn get_rotation(&self) -> f32 {
-        unsafe {
-            let sys::b2Rot { c, s } = sys::b2Body_GetRotation(*self.body_id);
-            s.atan2(c)
-        }
-    }
-
     pub fn set_position(&self, position: Vec2) {
         unsafe {
             sys::b2Body_SetTransform(*self.body_id, position.into(), sys::b2Body_GetRotation(*self.body_id));

@@ -423,6 +423,8 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 [[package]]
 name = "smol-rgb"
 version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4209575678dd586b2417c9d572e8fb9f2c4e76aa5a13ca175b6274c9c1d2cbe"
 dependencies = [
  "bytemuck",
  "rand",

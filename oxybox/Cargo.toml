@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 glam = { workspace = true }
 bitflags = "2.9.3"
-smol-rgb = { path = "../../smol-rgb", features = [
+smol-rgb = { version = "0.4.0", features = [
     "std",
     "serde",
     "bytemuck",
